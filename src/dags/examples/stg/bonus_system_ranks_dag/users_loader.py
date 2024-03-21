@@ -61,14 +61,15 @@ class UserLoader:
     LAST_LOADED_ID_KEY = "last_loaded_id"
     BATCH_LIMIT = 200
 
-    def __init__(self, pg_origin: PgConnect, pg_dest: PgConnect, log: Logger) -> None:
+    def __init__(self, date:str, pg_origin: PgConnect, pg_dest: PgConnect, log: Logger) -> None:
         self.pg_dest = pg_dest
         self.origin = UsersOriginRepository(pg_origin)
         self.stg = UserDestRepository()
         self.settings_repository = StgEtlSettingsRepository()
         self.log = log
+        self.date = date
 
-    def load_users(self):
+    def load(self):
         # открываем транзакцию.
         # Транзакция будет закоммичена, если код в блоке with пройдет успешно (т.е. без ошибок).
         # Если возникнет ошибка, произойдет откат изменений (rollback транзакции).

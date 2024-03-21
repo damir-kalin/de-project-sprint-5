@@ -10,14 +10,10 @@ from examples.stg import EtlSetting, StgEtlSettingsRepository
 
 class CourierOriginRepository:
     def get_data(self,  api_url: str, headers: dict,params={}) -> list:
-        if len(params)!=0:
-            url = f"{api_url}/couriers?{'&'.join([x + '=' + str(params[x]) for x in params])}"
-            response = requests.get(url, headers=headers)
-            return str2json(response.content)
-        else:
-            url = f"{api_url}/couriers"
-            response = requests.get(url, headers=headers)
-            return str2json(response.content)
+        url = f"{api_url}/couriers"
+        response = requests.get(url, headers=headers, params=params)
+        return str2json(response.content)
+        
 
 class CourierDestRepository:
     def insert_courier(self, conn: Connection, courier: dict) -> None:
@@ -43,7 +39,7 @@ class CourierLoader:
     BATCH_LIMIT = 50
     WF_KEY = f"example_apisystem_couriers_origin_to_stg_workflow"
 
-    def __init__(self, connection_name: str, nickname: str, cohort: str, pg_dest: PgConnect, log: Logger) -> None:
+    def __init__(self, date:str,  connection_name: str, nickname: str, cohort: str, pg_dest: PgConnect, log: Logger) -> None:
         self.pg_dest = pg_dest
         self.dest = CourierDestRepository()
         self.origin = CourierOriginRepository()
@@ -58,67 +54,24 @@ class CourierLoader:
             }
         self.log = log
         self.settings_repository = StgEtlSettingsRepository()
+        self.date = date + ' 00:00:00'
 
-    def load_couriers(self):
-        # params = {'sort_field': 'id'}
-        # self.log.info(f'Comand to api (url - {self.api_url}, headers - {self.headers}, command- couriers, parameters-{params}).')
-        # get_data = self.origin.get_data(self.api_url, self.headers, params)
-        # self.log.info(f'Get data from api (count_rows - {len(get_data)}).')
-        # with self.pg_dest.connection() as conn:
-
-        #     wf_setting = self.settings_repository.get_setting(conn, self.WF_KEY)
-        #     if not wf_setting:
-        #         wf_setting = EtlSetting(
-        #             id=0,
-        #             workflow_key=self.WF_KEY,
-        #             workflow_settings={
-        #                 self.LAST_LOADED_OFFSET_KEY: '0'
-        #             }
-        #         )
-        #     last_loaded_offset_str = wf_setting.workflow_settings[self.LAST_LOADED_OFFSET_KEY]
-        #     last_loaded_offset = int(last_loaded_offset_str)
-        #     self.log.info(f"starting to load from last checkpoint: {last_loaded_offset}")
-        #     params = {'sort_field': 'id', 'limit':self.BATCH_LIMIT, 'offset':last_loaded_offset}
-
-        #     i = 0
-        #     for rest in get_data:
-        #     #     self.log.info(rest._id)
-        #         self.dest.insert_rest(conn,rest)
-        #         i += 1
-        #     self.log.info(f'Processed {i} rows.')
-
-        #     wf_setting.workflow_settings[self.LAST_LOADED_OFFSET_KEY] = last_loaded_offset + self.BATCH_LIMIT
-        #     wf_setting_json = json2str(wf_setting.workflow_settings)
-        #     self.settings_repository.save_setting(conn, wf_setting.workflow_key, wf_setting_json)
-
-        #     self.log.info(f"Finishing work. Last checkpoint: {wf_setting_json}")
+    def load(self):
         with self.pg_dest.connection() as conn:
-            wf_setting = self.settings_repository.get_setting(conn, self.WF_KEY)
-            if not wf_setting:
-                wf_setting = EtlSetting(
-                    id=0,
-                    workflow_key=self.WF_KEY,
-                    workflow_settings={
-                        self.LAST_LOADED_OFFSET_KEY: '0'
-                    }
-                )
-            last_loaded_offset_str = wf_setting.workflow_settings[self.LAST_LOADED_OFFSET_KEY]
-            last_loaded_offset = int(last_loaded_offset_str)
-            self.log.info(f"starting to load from last checkpoint: {last_loaded_offset}")
-            params = {'sort_field': 'date', 'limit':self.BATCH_LIMIT, 'offset':last_loaded_offset}                
-            
-            self.log.info(f'Comand to api (url - {self.api_url}, headers - {self.headers}, command- couriers, parameters-{params}).')
-            deliveries = self.origin.get_data(self.api_url, self.headers, params)
-            self.log.info(f'Get data from api (count_rows - {len(deliveries)}).')
-            
-            i = 0
-            for delivery in deliveries:
-                self.dest.insert_courier(conn, delivery)
-                i += 1
-            self.log.info(f'Processed {i} rows.')
-        
-            wf_setting.workflow_settings[self.LAST_LOADED_OFFSET_KEY] = last_loaded_offset + self.BATCH_LIMIT
-            wf_setting_json = json2str(wf_setting.workflow_settings)
-            self.settings_repository.save_setting(conn, wf_setting.workflow_key, wf_setting_json)
-
-            self.log.info(f"Finishing work. Last checkpoint: {wf_setting_json}")
+            offset = 0
+            while True:
+                params = {'sort_field': 'date', 'limit':self.BATCH_LIMIT, 'offset':offset}                
+                
+                couriers = self.origin.get_data(self.api_url, self.headers, params)
+                self.log.info(f'Get data from api (count_rows - {len(couriers)}).')
+                
+                if couriers != None and len(couriers)>0:
+                    self.log.info(couriers)
+                    i = 0
+                    for courier in couriers:
+                        self.dest.insert_courier(conn, courier)
+                        i += 1
+                    self.log.info(f'Processed {i} rows.')
+                    offset += len(couriers)
+                else:
+                    break
